@@ -109,6 +109,12 @@ private:
 			});
 	}
 
+	template <typename L, typename H>
+	static constexpr void normalize(Time<L, H>& subject)
+	{
+		apply_and_normalize(subject, [](auto&& current_dur_v, auto idx) {});
+	}
+
 	using DefaultTime = Time<std::chrono::seconds, std::chrono::hours>;
 
 public:
@@ -120,6 +126,7 @@ public:
 	template <typename... Durations>
 	constexpr Time(const Durations&... durations) : _durations{ durations... } {}
 
+	// TODO: Consider suprplus flattening ([5s, 80min] -> [5s, ???min, ???h]. I want it to be [5s, 20min, 1h]
 	// Creates a copy of given Time object and truncates/converts it if needed
 	template <typename L, typename H>
 	constexpr Time(const Time<L, H>& other)
@@ -128,38 +135,62 @@ public:
 					  std::ratio_greater_v	<typename low_t::period,  typename L::period>)
 		{
 			// conversion that truncates smaller units
+			// 
 			//				what we've got
 			// ____________________________________
 			// |								  |
 			//	 [us]	[ms]  	[s]		[m]		[h]
 			//	  |_____________| |______________|		
 			//		 discard		what we want	
-			if constexpr (std::ratio_greater_v<typename low_t::period, typename L::period>)
-			{
-				copy_tuple_by_types(other._durations, _durations, _durations);
-			}
 
-			// conversion that converts greater units into smaller ones and then discards those greater units
-			//				what we've got
-			// ____________________________________
-			// |								  |
-			//	 [us]	[ms]  	[s]		[m]		[h]
-			//			 ^_____/ ^______/ ^______/
-			//				+=		+=		 +=
-			// |______________|		
-			//  what we want		
+			// Example #1:
+			// this		=  		[ ms=0, s=0 ]
+			// other	= [ us=5, ms=9, s=2, min=1  ]			
+			// by       =       [ ms=?, s=? ]				= intersect(this, other)
+			// this_res	=  		[ ms=9, s=2 ]
+
+			// Example #2:
+			// this		= [ us=0, ms=0, s=5, min=10 ]
+			// other	=		      [ s=5, min=10, h=3 ]
+			// by       =             [ s=?, min=?  ]		= intersect(this, other)
+			// this_res	= [ us=0, ms=0, s=5, min=10, h=0 ]
+
+			copy_tuple_by_types<intersect_ordered_tuples_t<decltype(_durations), decltype(other._durations)>>(_durations, other._durations);
+
 			if constexpr (std::ratio_less_v<typename high_t::period, typename H::period>)
 			{
+				// conversion that converts greater units into smaller ones and then discards those greater units
+				// 
+				//				what we've got
+				// ____________________________________
+				// |								  |
+				//	 [us]	[ms]  	[s]		[m]		[h]
+				//			 ^_____/ ^______/ ^______/
+				//				+=		+=		 +=
+				// |______________|		
+				//  what we want		
+
+				// Example #1:
+				// this		=  		[ ms=9, s=2 ]
+				// other	= [ us=5, ms=9, s=2, min=1  ]			
+				// other_truncated	=	  [ s=2, min=1  ] -> seconds(62)		
+				// this_res	=  		[ ms=9, s=62 ]
+
+				// Example #2:
+				// this		= [ us=0, ms=0, s=5, min=10 ]
+				// other	=		      [ s=5, min=10, h=3 ]
+				// other_truncated =			[min=10, h=3 ] -> 190
+				// this_res	= [ us=0, ms=0, s=5, min=10 + 190 = 200 ]
 				const Time<high_t, H> other_truncated(other);
-				copy_tuple_by_types(other._durations, _durations, _durations);
 				std::get<high_t>(_durations) = static_cast<high_t>(other_truncated);
 			}
-
 		}
 		else
 		{
-			copy_tuple_by_types(other._durations, _durations, other._durations);
+			copy_tuple_by_types(_durations, other._durations, other._durations);
 		}
+
+		normalize(*this);
 		return;
 	}
 
@@ -193,6 +224,23 @@ public:
 	{
 		using	BroadenedTime = Time<low_broader_t<low_t, L>, high_broader_t<high_t, H>>;
 		return	BroadenedTime(*this) + BroadenedTime(other);
+	}
+
+	// TODO: TOP PRIORITY, impl operator-(Time, Time)
+
+	constexpr Time operator- (const Time& other) const
+	{
+		Time result = *this;
+		apply_and_normalize(result, [&other](auto&& current_dur_v, auto idx)
+			{ current_dur_v -= std::get<idx>(other._durations); });
+		return result;
+	}
+
+	template <typename L, typename H>
+	constexpr auto operator-(const Time<L, H>& other) const
+	{
+		using	BroadenedTime = Time<low_broader_t<low_t, L>, high_broader_t<high_t, H>>;
+		return	BroadenedTime(*this) - BroadenedTime(other);
 	}
 
 	friend constexpr std::ostream& operator<<(std::ostream& os, const Time<low_t, high_t>& time)

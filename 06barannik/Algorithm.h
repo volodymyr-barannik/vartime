@@ -2,9 +2,25 @@
 #include <algorithm>
 #include <tuple>
 #include <functional>
+#include <iostream>
 
 // TUPLE
 
+// has type
+template <typename Type, typename Tuple>
+struct has_type;
+
+template <typename Type, typename... Types>
+struct has_type<Type, std::tuple<Types...>> : std::disjunction<std::is_same<Type, Types>...> {};
+
+template <typename Type, typename Tuple>
+using has_type_t = typename has_type<Type, Tuple>::type;
+
+template <typename Type, typename Tuple>
+constexpr static bool has_type_v = has_type<Type, Tuple>::type::value;
+
+
+// i-th type
 template<size_t i, class...Args>
 using ith = std::tuple_element_t<i, std::tuple<Args...>>;
 
@@ -15,11 +31,12 @@ struct ith_type
 };
 
 template<size_t i, typename... Args>
-using ith_type_t = ith_type<i, Args...>::type;
+using ith_type_t = typename ith_type<i, Args...>::type;
+
 
 // prepend element to tuple
 template <typename Arg, class Tuple>
-struct tuple_prepend {};
+struct tuple_prepend;
 
 template <typename Arg, typename ...Args>
 struct tuple_prepend<Arg, std::tuple<Args...>>
@@ -42,7 +59,7 @@ struct filter_args<UnaryPredicate, Arg, Args...>
 	<
 		UnaryPredicate<Arg>::value,													// if:   predicate holds true
 		tuple_prepend_t<Arg, typename filter_args<UnaryPredicate, Args...>::type>,	// then: prepend current arg and proceed to next arg
-		typename filter_args<UnaryPredicate, Args...>::type						// else: skip current arg and proceed to next arg
+		typename filter_args<UnaryPredicate, Args...>::type							// else: skip current arg and proceed to next arg
 	>;
 };
 
@@ -54,7 +71,7 @@ struct filter_args<UnaryPredicate>
 
 // filtered tuple
 template <template <typename> class UnaryPredicate, class Tuple>
-struct filtered_tuple {};
+struct filtered_tuple;
 
 template <template <typename> class UnaryPredicate, typename ...Args>
 struct filtered_tuple<UnaryPredicate, std::tuple<Args...>>
@@ -99,6 +116,7 @@ constexpr Callable for_each(Tuple&& on, Callable&& f)
 	);
 }
 
+
 // calls given Callable f with each of given args (preserving order of args)
 template <class Tuple, class Callable, std::size_t... idx>
 constexpr Callable for_each_arg_idx(Tuple&& t, Callable&& f, std::index_sequence<idx...>)
@@ -128,36 +146,39 @@ constexpr Callable for_each_idx(Tuple&& t, Callable&& f) {
 		std::tuple_size_v<std::remove_reference_t<Tuple>>>{};
 
 	return for_each_arg_idx(std::forward<Tuple>(t),
-		std::forward<Callable>(f),
-		std::forward<decltype(seq)>(seq));
+							std::forward<Callable>(f),
+							std::forward<decltype(seq)>(seq));
+}
+
+
+// requires Callable of type [](auto&& idx) {...};
+template <class Callable, std::size_t... idx>
+constexpr Callable for_each_arg_idx(Callable&& f, std::index_sequence<idx...>)
+{
+	// for each given idx
+	(void)std::initializer_list<int>
+	{
+		// call f
+		((void)std::invoke(f, std::integral_constant<std::size_t, idx>{}), 0)...
+	};
+	return f;
 }
 
 template <class Tuple, class Callable>
-constexpr Callable for_each_idx(const Tuple&& t, Callable&& f) {
+constexpr Callable for_each_type(Callable&& f) {
 	auto seq = std::make_index_sequence<
 		std::tuple_size_v<std::remove_reference_t<Tuple>>>{};
 
-	return for_each_arg_idx(std::forward<Tuple>(t),
-		std::forward<Callable>(f),
-		std::forward<decltype(seq)>(seq));
+	return for_each_arg_idx(std::forward<Callable>(f),
+							std::forward<decltype(seq)>(seq));
 }
 
-// requires types of elements of both tuples to be unique
-template <typename TupleFrom, typename TupleTo>
-constexpr void copy_tuple_by_types(const TupleFrom& from, TupleTo& to)
-{
-	for_each(from, [&to](auto&& elem)
-		{
-			// Decay the type of elem. It's necessary as far as elem is const because it's contained in const std::tuple.
-			// So in order to modify element of the same type contained in target tuple (which is not constant!)
-			// we have to... decay it. Throw everything away.
-			std::get<std::decay_t<decltype(elem)>>(to) = elem;
-		});
-}
+
+
 
 // requires types of elements of both tuples to be unique
-template <typename TupleFrom, typename TupleTo, typename TupleBy>
-constexpr void copy_tuple_by_types(const TupleFrom& from, TupleTo& to, const TupleBy& by)
+template <class TupleBy, class TupleTo, class TupleFrom>
+constexpr void copy_tuple_by_types(TupleTo& to, const TupleFrom& from, const TupleBy& by = TupleBy{})
 {
 	for_each(by, [&from, &to](auto&& elem)
 		{
@@ -165,3 +186,35 @@ constexpr void copy_tuple_by_types(const TupleFrom& from, TupleTo& to, const Tup
 			std::get<decayed_elem>(to) = std::get<decayed_elem>(from);
 		});
 }
+
+// Unfortunately it is impossible to make it work when evaluated at runtime.
+// tuple_element_t can be evaluated only at compile-time.
+// There's no runtime reflection in C++, so we can't acquire type of i'th element of tuple at runtime.
+// Thus, we have to create a "proxy" tuple and then iterate over its elements.
+// Please, please, please. Tell me I'm wrong. Tell me there's another way of doing it. Is there any such?
+// 
+//template <class TupleBy, class TupleTo, class TupleFrom>
+//constexpr void copy_tuple_by_types(TupleTo& to, const TupleFrom& from)
+//{
+//	for_each_type<TupleBy>([&from, &to](auto&& idx)
+//		{
+//			using decayed_elem = typename std::decay_t<std::tuple_element_t<idx, TupleBy>>;
+//			std::get<decayed_elem>(to) = std::get<decayed_elem>(from);
+//		});
+//}
+
+
+template<class Tuple1, class Tuple2>
+struct intersect_ordered_tuples
+{
+	template<typename Type>
+	struct intersect_ordered_tuples_predicate
+	{
+		constexpr static bool value = has_type_v<std::decay_t<Type>, std::decay_t<Tuple2>>;
+	};
+
+	using type = filtered_tuple_t<intersect_ordered_tuples_predicate, Tuple1>;
+};
+
+template<typename Tuple1, typename Tuple2>
+using intersect_ordered_tuples_t = typename intersect_ordered_tuples<Tuple1, Tuple2>::type;
