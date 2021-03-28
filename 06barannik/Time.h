@@ -1,132 +1,231 @@
 #pragma once
 #include <chrono>
-#include <ostream>
-#include <algorithm>
-#include "BitUtils.h"
+#include <iostream>
+#include <time.h>
+#include "Algorithm.h"
 
-namespace btime
+using durations = std::tuple
+<
+	std::chrono::nanoseconds,
+	std::chrono::microseconds,
+	std::chrono::milliseconds,
+	std::chrono::seconds,
+	std::chrono::minutes,
+	std::chrono::hours
+>;
+
+template <typename T>
+struct duration_name;
+
+template <> struct duration_name<std::chrono::nanoseconds>	{ static constexpr auto name = "nanoseconds"; };
+template <> struct duration_name<std::chrono::microseconds> { static constexpr auto name = "microseconds"; };
+template <> struct duration_name<std::chrono::milliseconds> { static constexpr auto name = "milliseconds"; };
+template <> struct duration_name<std::chrono::seconds>		{ static constexpr auto name = "seconds"; };
+template <> struct duration_name<std::chrono::minutes>		{ static constexpr auto name = "minutes"; };
+template <> struct duration_name<std::chrono::hours>		{ static constexpr auto name = "hours"; };
+
+template <typename T>
+constexpr auto duration_name_v = duration_name<std::decay_t<T>>::name;
+
+// Represents a time in range of standard units [LowDurationType, HighDurationTime]
+// e.g., Time<seconds, days> stores and exposes seconds, minutes and days
+template <class LowDurationType, class HighDurationType = LowDurationType>
+class Time
 {
-	template <class ChronoDuration>
-	constexpr void max_time_value()
+private:
+
+	template <typename L, typename H>
+	friend class Time;
+
+	using low_t		= LowDurationType;
+	using high_t	= HighDurationType;
+
+	template <typename Duration>
+	struct is_within_current_range
 	{
-		return std::max(ChronoDuration::period::num, ChronoDuration::period::den);
+		static constexpr bool value =
+			std::ratio_greater_equal_v
+			<
+				typename Duration::period,
+				typename low_t::period
+			>
+			&& std::ratio_less_equal_v
+			<
+				typename Duration::period,
+				typename high_t::period
+			>;
+	};
+	
+	using durations_t = filtered_tuple_t<is_within_current_range, durations>;
+	durations_t _durations;
+
+	template <typename L1, typename L2>
+	struct low_broader
+	{
+		using value = std::conditional_t < std::ratio_less_equal_v<typename L1::period, typename L2::period>,
+			L1, L2>;
+	};
+
+	template <typename H1, typename H2>
+	struct high_broader
+	{ 
+		using value = std::conditional_t<std::ratio_less_equal_v<typename H1::period, typename H2::period>, 
+			H2, H1>; 
+	};
+
+	template <typename L1, typename L2>
+	using low_broader_t = typename low_broader<L1, L2>::value;
+
+	template <typename H1, typename H2>
+	using high_broader_t = typename high_broader<H1, H2>::value;
+
+	template <typename L, typename H, typename Callable>
+	static constexpr void apply_and_normalize(Time<L, H>& subject, Callable&& f)
+	{
+		for_each_idx(subject._durations, [&](auto&& current_dur_v, auto idx)
+			{
+				// 1. APPLY
+				std::invoke(f, current_dur_v, idx);
+
+				// 2. NORMALIZE
+				// if next duration exists (it also will be "greater" than current one)
+				if constexpr (idx + 1 < std::tuple_size_v<durations_t>)
+				{
+					// then get its type
+					using next_dur_t = typename std::remove_reference_t<decltype(std::get<idx + 1>(subject._durations))>;
+
+					// and give it the surplus of current value (if exists)
+					std::get<idx + 1>(subject._durations) += next_dur_t
+					(
+						// e.g. if we have curr_t = seconds, then next_t = minutes
+						// and if we have, let's say, curr_v = 73, next_v = 4
+						// then in this formula we'd get 73 / 60 = 1.
+						// Thus, we have a surplus of value 1
+						current_dur_v / next_dur_t(1)
+					);
+					// apply_and_normalize current value (take away the surplus)
+					current_dur_v %= next_dur_t(1);
+				}
+			});
 	}
 
-	template <class ChronoDuration>
-	using min_suitable_time_type = typename min_suitable_uint_type<
-		bytecount<max_time_value<ChronoDuration>>::value
-	>::type;
+	using DefaultTime = Time<std::chrono::seconds, std::chrono::hours>;
 
-	using hours_t	= min_suitable_time_type<std::chrono::hours>;
-	using minutes_t = min_suitable_time_type<std::chrono::minutes>;
-	using seconds_t = min_suitable_time_type<std::chrono::seconds>;
+public:
 
-	static constexpr hours_t	max_hours	= max_time_value<hours_t>();
-	static constexpr minutes_t	max_minutes = max_time_value<minutes_t>();
-	static constexpr seconds_t	max_seconds = max_time_value<seconds_t>();
+	static_assert(std::ratio_less_equal_v<typename LowDurationType::period, typename HighDurationType::period> && "Low bound cannot exceed high bound");
+	// TODO: add check that every next is greater than prev
 
+	// Creates Time out of given durations
+	template <typename... Durations>
+	constexpr Time(const Durations&... durations) : _durations{ durations... } {}
 
-	class Time
+	// Creates a copy of given Time object and truncates/converts it if needed
+	template <typename L, typename H>
+	constexpr Time(const Time<L, H>& other)
 	{
-	private:
-
-		hours_t		_hours;
-		minutes_t	_minutes;
-		seconds_t	_seconds;
-
-		template <std::chrono::duration dur>
-		constexpr bool isValid() const noexcept
+		if constexpr (std::ratio_less_v		<typename high_t::period, typename H::period> ||
+					  std::ratio_greater_v	<typename low_t::period,  typename L::period>)
 		{
-			return d <= max_time_value<decltype(d)>();
-		}
+			// conversion that truncates smaller units
+			//				what we've got
+			// ____________________________________
+			// |								  |
+			//	 [us]	[ms]  	[s]		[m]		[h]
+			//	  |_____________| |______________|		
+			//		 discard		what we want	
+			if constexpr (std::ratio_greater_v<typename low_t::period, typename L::period>)
+			{
+				copy_tuple_by_types(other._durations, _durations, _durations);
+			}
 
-		void normalize() noexcept
+			// conversion that converts greater units into smaller ones and then discards those greater units
+			//				what we've got
+			// ____________________________________
+			// |								  |
+			//	 [us]	[ms]  	[s]		[m]		[h]
+			//			 ^_____/ ^______/ ^______/
+			//				+=		+=		 +=
+			// |______________|		
+			//  what we want		
+			if constexpr (std::ratio_less_v<typename high_t::period, typename H::period>)
+			{
+				const Time<high_t, H> other_truncated(other);
+				copy_tuple_by_types(other._durations, _durations, _durations);
+				std::get<high_t>(_durations) = static_cast<high_t>(other_truncated);
+			}
+
+		}
+		else
 		{
-			_hours	+= _minutes / max_minutes + _seconds / max_hours;
-			_minutes = _minutes % max_minutes + _seconds / max_minutes % max_minutes;
-			_seconds %= max_minutes;
-		};
-
-	public:
-
-		Time()
-		{
-			struct tm today;
-			time_t t	= time(NULL);
-			localtime_s(&today, &t);
-			_minutes	= static_cast<decltype(_minutes)>(today.tm_min);
-			_seconds	= static_cast<decltype(_seconds)>(today.tm_sec);
-			_hours		= static_cast<decltype(_hours)>(today.tm_hour);
+			copy_tuple_by_types(other._durations, _durations, other._durations);
 		}
+		return;
+	}
 
-		Time(decltype(_seconds) seconds, decltype(_minutes) minutes, decltype(_hours) hours) :
-			_minutes(minutes),
-			_seconds(seconds),
-			_hours(hours)
-		{
-			normalize();
-		}
+	template <typename Duration>
+	constexpr explicit operator Duration() const
+	{
+		Duration result(0);
+		for_each(_durations, [&result](auto&& elem)
+			{ result += std::chrono::duration_cast<Duration>(elem); });
+		return result;
+	}
 
-		inline	seconds_t	seconds()	const noexcept { return _seconds;	}
-		inline	hours_t		hours()		const noexcept { return _hours;		}
-		inline	minutes_t	minutes()	const noexcept { return _minutes;	}
+	template <typename Duration>
+	constexpr const Duration& get() const { return std::get<Duration>(_durations); }
 
-		seconds_t seconds(seconds_t s)
-		{
-			if (s > 0) _seconds = s;
-			normalize();
-			return _seconds;
-		}
+	template <typename Duration>
+	Duration& get() { return std::get<Duration>(_durations); }
 
-		hours_t hours(hours_t h)
-		{
-			if (h > 0) _hours = h;
-			normalize();
-			return _hours;
-		}
+	// TODO: SET()
 
-		minutes_t minutes(minutes_t m)
-		{
-			if (m > 0) _minutes = m;
-			normalize();
-			return _minutes;
-		}
+	constexpr Time operator+ (const Time& other) const
+	{
+		Time result = *this;
+		apply_and_normalize(result, [&other](auto&& current_dur_v, auto idx)
+			{ current_dur_v += std::get<idx>(other._durations); });
+		return result;
+	}
 
-		bool operator<(const Time t)const {
-			if (_hours != t._hours)return _hours < t._hours;
-			if (_minutes != t._minutes)return _minutes < t._minutes;
-			if (_seconds != t._seconds)return _seconds < t._seconds;
-		}
-		const Time operator+(const Time& t)const {
+	template <typename L, typename H>
+	constexpr auto operator+(const Time<L, H>& other) const
+	{
+		using	BroadenedTime = Time<low_broader_t<low_t, L>, high_broader_t<high_t, H>>;
+		return	BroadenedTime(*this) + BroadenedTime(other);
+	}
 
-			short int s = (_seconds + t._seconds);
-			short int m = (_minutes + t._minutes) + s / 60;
-			short int h = (_hours + t._hours) + m / 60;
-
-			return Time(s % 60, m % 60, h % 24);
-		}
-
-		bool operator==(const Time& t)const {
-			return _minutes == t._minutes && _seconds == t._seconds && _hours == t._hours;
-		}
-
-		long toSeconds()const {
-			return _minutes * 60 + _seconds + _hours * 3600;
-		}
-		static long day() {
-			return 24 * 3600;
-		}
-		Time& operator=(const Time& other) {
-			_hours = other._hours;
-			_minutes = other._minutes;
-			_seconds = other._seconds;
-			return *this;
-		}
-
-	};
-	std::ostream& operator<<(std::ostream& os, const Time& t) {
-		os << t.hours() << ":" << t.minutes() << ":" << t.seconds() << "\n";
+	friend constexpr std::ostream& operator<<(std::ostream& os, const Time<low_t, high_t>& time)
+	{
+		os << "[ ";
+		for_each(time._durations, [&os](auto&& f) { os << f.count() << ' ' << duration_name_v<decltype(f)> << "; "; });
+		os << ']';
 		return os;
 	}
+};
+
+using DefaultTime = Time<std::chrono::seconds, std::chrono::hours>;
+
+// Returns current time
+static DefaultTime now()
+{
+	using namespace std::chrono;
+	auto current	= system_clock::now();
+
+	struct tm time;
+	auto now_time_t = system_clock::to_time_t(current);
+	(void)localtime_s(&time, &now_time_t);
+
+	return { static_cast<seconds>(time.tm_sec), static_cast<minutes>(time.tm_min), static_cast<hours>(time.tm_hour) };
 }
+
+
+template<typename... Durations> // 0 or more durations
+Time(const Durations&... durations) ->Time<std::chrono::seconds>;
+
+template<typename DurationLow> // 1 duration
+Time(const DurationLow&) -> Time<DurationLow>;
+
+template<typename DurationLow, typename Duration, typename... Durations> // 2 or more durations
+Time(const DurationLow&, const Duration&, const Durations&...) -> Time<DurationLow, ith_type_t<sizeof...(Durations), Duration, Durations...>>;
 
