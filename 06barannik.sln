@@ -5,8 +5,6 @@ VisualStudioVersion = 16.0.31112.23
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "06barannik", "06barannik\06barannik.vcxproj", "{51BCFC02-D769-4214-B04C-1FC196F65A0E}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "consteval", "consteval\consteval.vcxproj", "{BF80752D-9F08-40F1-BE4E-13683CAAF332}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -23,14 +21,6 @@ Global
 		{51BCFC02-D769-4214-B04C-1FC196F65A0E}.Release|x64.Build.0 = Release|x64
 		{51BCFC02-D769-4214-B04C-1FC196F65A0E}.Release|x86.ActiveCfg = Release|Win32
 		{51BCFC02-D769-4214-B04C-1FC196F65A0E}.Release|x86.Build.0 = Release|Win32
-		{BF80752D-9F08-40F1-BE4E-13683CAAF332}.Debug|x64.ActiveCfg = Debug|x64
-		{BF80752D-9F08-40F1-BE4E-13683CAAF332}.Debug|x64.Build.0 = Debug|x64
-		{BF80752D-9F08-40F1-BE4E-13683CAAF332}.Debug|x86.ActiveCfg = Debug|Win32
-		{BF80752D-9F08-40F1-BE4E-13683CAAF332}.Debug|x86.Build.0 = Debug|Win32
-		{BF80752D-9F08-40F1-BE4E-13683CAAF332}.Release|x64.ActiveCfg = Release|x64
-		{BF80752D-9F08-40F1-BE4E-13683CAAF332}.Release|x64.Build.0 = Release|x64
-		{BF80752D-9F08-40F1-BE4E-13683CAAF332}.Release|x86.ActiveCfg = Release|Win32
-		{BF80752D-9F08-40F1-BE4E-13683CAAF332}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

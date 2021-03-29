@@ -6,23 +6,16 @@ class Watch
 {
 private:
 
-	//Timer<Duration> _timer;
+	Timer<Duration> _timer;
 
 public:
 
 	template<typename L, typename H, typename Functor, typename... Args>
-	explicit Watch(Time<L, H>&& time, const bool sync, Functor&& fn, Args&&... args)
-	{
-		Timer<Duration> timer(std::forward<Time<L, H>>(time - now()), sync,
-							  std::forward<decltype(fn)>(fn), std::forward<decltype(args)>(args)...);
-	}
+	explicit Watch(Time<L, H>&& time, const bool sync, Functor&& fn, Args&&... args) :
+		_timer(std::forward<Time<L, H>>(time - now()), sync,
+			   std::forward<decltype(fn)>(fn), std::forward<decltype(args)>(args)...) {}
 
-	void activate()
-	{
-
-	}
-
-	//const Duration& time_left() const { return _accumulated; }
+	bool elapsed() const { return _timer.elapsed(); }
 };
 
 

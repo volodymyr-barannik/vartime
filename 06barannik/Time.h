@@ -120,13 +120,11 @@ private:
 public:
 
 	static_assert(std::ratio_less_equal_v<typename LowDurationType::period, typename HighDurationType::period> && "Low bound cannot exceed high bound");
-	// TODO: add check that every next is greater than prev
 
 	// Creates Time out of given durations
 	template <typename... Durations>
 	constexpr Time(const Durations&... durations) : _durations{ durations... } {}
 
-	// TODO: Consider suprplus flattening ([5s, 80min] -> [5s, ???min, ???h]. I want it to be [5s, 20min, 1h]
 	// Creates a copy of given Time object and truncates/converts it if needed
 	template <typename L, typename H>
 	constexpr Time(const Time<L, H>& other)
@@ -207,9 +205,12 @@ public:
 	constexpr const Duration& get() const { return std::get<Duration>(_durations); }
 
 	template <typename Duration>
-	Duration& get() { return std::get<Duration>(_durations); }
-
-	// TODO: SET()
+	Time<LowDurationType, HighDurationType>& set(Duration&& duration)
+	{ 
+		std::get<Duration>(_durations) = duration;
+		normalize(*this);
+		return *this;
+	}
 
 	constexpr Time operator+ (const Time& other) const
 	{
@@ -226,9 +227,8 @@ public:
 		return	BroadenedTime(*this) + BroadenedTime(other);
 	}
 
-	// TODO: TOP PRIORITY, impl operator-(Time, Time)
 
-	constexpr Time operator- (const Time& other) const
+	constexpr Time operator-(const Time& other) const
 	{
 		Time result = *this;
 		apply_and_normalize(result, [&other](auto&& current_dur_v, auto idx)
@@ -269,11 +269,10 @@ static DefaultTime now()
 
 
 template<typename... Durations> // 0 or more durations
-Time(const Durations&... durations) ->Time<std::chrono::seconds>;
+Time(const Durations&... durations) -> Time<std::chrono::seconds>;
 
 template<typename DurationLow> // 1 duration
 Time(const DurationLow&) -> Time<DurationLow>;
 
 template<typename DurationLow, typename Duration, typename... Durations> // 2 or more durations
 Time(const DurationLow&, const Duration&, const Durations&...) -> Time<DurationLow, ith_type_t<sizeof...(Durations), Duration, Durations...>>;
-

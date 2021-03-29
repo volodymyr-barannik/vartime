@@ -2,32 +2,28 @@
 #include <algorithm>
 #include <tuple>
 #include <functional>
-#include <iostream>
 
 // TUPLE
 
 // has type
-template <typename Type, typename Tuple>
+template <typename Type, class Tuple>
 struct has_type;
 
-template <typename Type, typename... Types>
-struct has_type<Type, std::tuple<Types...>> : std::disjunction<std::is_same<Type, Types>...> {};
+template <typename Type, typename... TupleTypes>
+struct has_type<Type, std::tuple<TupleTypes...>> : std::disjunction<std::is_same<Type, TupleTypes>...> {};
 
-template <typename Type, typename Tuple>
+template <typename Type, class Tuple>
 using has_type_t = typename has_type<Type, Tuple>::type;
 
-template <typename Type, typename Tuple>
+template <typename Type, class Tuple>
 constexpr static bool has_type_v = has_type<Type, Tuple>::type::value;
 
 
 // i-th type
-template<size_t i, class...Args>
-using ith = std::tuple_element_t<i, std::tuple<Args...>>;
-
 template<size_t i, typename... Args>
 struct ith_type
 {
-	using type = ith<i, Args...>;
+	using type = std::tuple_element_t<i, std::tuple<Args...>>;
 };
 
 template<size_t i, typename... Args>
@@ -48,23 +44,23 @@ template <typename Arg, class Tuple>
 using tuple_prepend_t = typename tuple_prepend<Arg, Tuple>::type;
 
 
-// filter args
-template <template <typename> class UnaryPredicate, typename ...Args>
-struct filter_args;
+// filter elements
+template <template <typename> class UnaryPredicate, typename ...Elemenets>
+struct filter_elements;
 
-template <template <typename> class UnaryPredicate, typename Arg, typename ...Args>
-struct filter_args<UnaryPredicate, Arg, Args...>
+template <template <typename> class UnaryPredicate, typename CurrentElement, typename ...Elements>
+struct filter_elements<UnaryPredicate, CurrentElement, Elements...>
 {
 	using type = std::conditional_t
 	<
-		UnaryPredicate<Arg>::value,													// if:   predicate holds true
-		tuple_prepend_t<Arg, typename filter_args<UnaryPredicate, Args...>::type>,	// then: prepend current arg and proceed to next arg
-		typename filter_args<UnaryPredicate, Args...>::type							// else: skip current arg and proceed to next arg
+		UnaryPredicate<CurrentElement>::value,															// if:   predicate holds true
+		tuple_prepend_t<CurrentElement, typename filter_elements<UnaryPredicate, Elements...>::type>,	// then: prepend current arg and proceed to next element
+		typename filter_elements<UnaryPredicate, Elements...>::type										// else: skip current element and proceed to the next one
 	>;
 };
 
 template <template <typename> class UnaryPredicate>
-struct filter_args<UnaryPredicate>
+struct filter_elements<UnaryPredicate>
 {
 	using type = std::tuple<>;
 };
@@ -73,10 +69,10 @@ struct filter_args<UnaryPredicate>
 template <template <typename> class UnaryPredicate, class Tuple>
 struct filtered_tuple;
 
-template <template <typename> class UnaryPredicate, typename ...Args>
-struct filtered_tuple<UnaryPredicate, std::tuple<Args...>>
+template <template <typename> class UnaryPredicate, typename ...Elements>
+struct filtered_tuple<UnaryPredicate, std::tuple<Elements...>>
 {
-	using type = typename filter_args<UnaryPredicate, Args...>::type;
+	using type = typename filter_elements<UnaryPredicate, Elements...>::type;
 };
 
 template <template <typename> class UnaryPredicate, class Tuple>
@@ -85,15 +81,15 @@ using filtered_tuple_t = typename filtered_tuple<UnaryPredicate, Tuple>::type;
 // for each
 
 // calls given Callable f for each of given args (preserving order of args)
-template <class Callable, typename... Args>
-constexpr Callable for_each_arg(Callable&& f, Args&& ...args)
+template <class Callable, typename... Elements>
+constexpr Callable for_each_arg(Callable&& f, Elements&& ...args)
 {
 	// cast to void in order to suppress warnings
 	// this whole construction is needed for calling f with args in proper order -- and nothing more
 	(void)std::initializer_list<int>
 	{
 		(
-			(void)std::invoke(std::forward<Callable>(f), std::forward<Args>(args)), // call
+			(void)std::invoke(std::forward<Callable>(f), std::forward<Elements>(args)), // call
 			0 // just a lonely placeholder in order for this thing to work
 			  // (initializer lists has to be constructed out of something,
 			  //  so it shall be constructed out of zeros)
@@ -150,32 +146,6 @@ constexpr Callable for_each_idx(Tuple&& t, Callable&& f) {
 							std::forward<decltype(seq)>(seq));
 }
 
-
-// requires Callable of type [](auto&& idx) {...};
-template <class Callable, std::size_t... idx>
-constexpr Callable for_each_arg_idx(Callable&& f, std::index_sequence<idx...>)
-{
-	// for each given idx
-	(void)std::initializer_list<int>
-	{
-		// call f
-		((void)std::invoke(f, std::integral_constant<std::size_t, idx>{}), 0)...
-	};
-	return f;
-}
-
-template <class Tuple, class Callable>
-constexpr Callable for_each_type(Callable&& f) {
-	auto seq = std::make_index_sequence<
-		std::tuple_size_v<std::remove_reference_t<Tuple>>>{};
-
-	return for_each_arg_idx(std::forward<Callable>(f),
-							std::forward<decltype(seq)>(seq));
-}
-
-
-
-
 // requires types of elements of both tuples to be unique
 template <class TupleBy, class TupleTo, class TupleFrom>
 constexpr void copy_tuple_by_types(TupleTo& to, const TupleFrom& from, const TupleBy& by = TupleBy{})
@@ -188,11 +158,35 @@ constexpr void copy_tuple_by_types(TupleTo& to, const TupleFrom& from, const Tup
 }
 
 // Unfortunately it is impossible to make it work when evaluated at runtime.
-// tuple_element_t can be evaluated only at compile-time.
+// tuple_element_t can be evaluated at compile-time only.
 // There's no runtime reflection in C++, so we can't acquire type of i'th element of tuple at runtime.
 // Thus, we have to create a "proxy" tuple and then iterate over its elements.
 // Please, please, please. Tell me I'm wrong. Tell me there's another way of doing it. Is there any such?
-// 
+
+
+// requires Callable of form [....](auto&& idx) {....};
+//template <class Callable, std::size_t... idx>
+//constexpr Callable for_each_arg_idx(Callable&& f, std::index_sequence<idx...>)
+//{
+//	// for each given idx
+//	(void)std::initializer_list<int>
+//	{
+//		// call f
+//		((void)std::invoke(f, std::integral_constant<std::size_t, idx>{}), 0)...
+//	};
+//	return f;
+//}
+//
+//template <class Tuple, class Callable>
+//constexpr Callable for_each_type(Callable&& f)
+//{
+//	auto seq = std::make_index_sequence<
+//		std::tuple_size_v<std::remove_reference_t<Tuple>>>{};
+//
+//	return for_each_arg_idx(std::forward<Callable>(f),
+//		std::forward<decltype(seq)>(seq));
+//}
+
 //template <class TupleBy, class TupleTo, class TupleFrom>
 //constexpr void copy_tuple_by_types(TupleTo& to, const TupleFrom& from)
 //{
@@ -216,5 +210,5 @@ struct intersect_ordered_tuples
 	using type = filtered_tuple_t<intersect_ordered_tuples_predicate, Tuple1>;
 };
 
-template<typename Tuple1, typename Tuple2>
+template<class Tuple1, class Tuple2>
 using intersect_ordered_tuples_t = typename intersect_ordered_tuples<Tuple1, Tuple2>::type;

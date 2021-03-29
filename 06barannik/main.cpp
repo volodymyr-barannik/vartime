@@ -1,6 +1,12 @@
+// Author:		Barannik Volodymyr
+// 
+// Requirements: C++17
+// 
+// Comment:		This is my first try at template metaprogramming. Please. Critique.
+//				If you think that something could've been done in a more elegant way,
+//				please tell me. I'd like to hear your proposals.
+
 #include <iostream>
-#include <chrono>
-#include "Algorithm.h"
 #include "Time.h"
 #include "Timer.h"
 #include "Watch.h"
@@ -50,22 +56,27 @@ namespace tests
 			cout << "t3lowered_flattened:\t" << t3lowered_flattened << nendl;
 			cout << "t2truncated_and_lowered:" << t2truncated_and_lowered << nendl;
 
-			constexpr auto t1microseconds = t1.get<microseconds>();
-			cout << "microseconds of t1:\t" << t1microseconds << nendl;
+			constexpr auto t1_microseconds = t1.get<microseconds>();
+			cout << "microseconds of t1:\t" << t1_microseconds.count() << nendl;
+
+			t3non_constexpr.set<seconds>(42s);
+			cout << "t3non_constexpr.set<seconds>(42s): " << t3non_constexpr << nendl;
+			t3non_constexpr.set<seconds>(65s);
+			cout << "t3non_constexpr.set<seconds>(65s): " << t3non_constexpr << nendl;
 
 			constexpr seconds t1_in_seconds = static_cast<seconds>(t1);
-			cout << "t1 in seconds:\t\t" << t1_in_seconds << nendl;
+			cout << "t1 in seconds:\t\t" << t1_in_seconds.count() << nendl;
 
 			cout << nendl;
 
 			// You might get an IntelliSense warning here. Probably, it's a bug.
 			// I've tried both gcc and clang -- no problems there, compiles perfectly
 			constexpr auto radd1 = t1 + t2;
-			constexpr auto radd2 = t1 + t3;
-			constexpr auto radd3 = radd2 + t2;
+			Time radd2 = t1 + t3;
+			auto radd3 = radd1 + radd2;
 			cout << "radd1 = t1 + t2 =\t\t" << radd1 << nendl;
 			cout << "radd2 = t1 + t3 =\t\t" << radd2 << nendl;
-			cout << "radd3 = radd2 + t2 =\t\t" << radd3 << nendl;
+			cout << "radd3 = radd1 + radd2 =\t\t" << radd3 << nendl;
 
 			constexpr auto rsub1 = t2 - t1;
 			auto rsub2 = now() - now();
@@ -79,11 +90,13 @@ namespace tests
 		void test()
 		{
 			Timer<seconds>			timer1(Time{ 2s },		false,	[]() {cout << "#1\tTimer<seconds>\t\t[async]\t(2s)\t\tis done!" << nendl; });
+			cout << "is timer1 elapsed? " << timer1.elapsed() << nendl;
 			Timer					timer2(Time{ 1s },		false,	[]() {cout << "#2\tTimer\t\t\t[async]\t(1s)\t\tis done!" << nendl; });
 			Timer<milliseconds>		timer3(Time{ 25ms, 1s },false,	[]() {cout << "#3\tTimer<milliseconds>\t[async]\t(25ms, 1s)\tis done!" << nendl; });
 			Timer<milliseconds>		timer4(Time{},			false,	[]() {cout << "#4\tTimer<milliseconds>\t[async]\t(0s)\t\tis done!" << nendl; });
-			Timer<hours>			timer5(Time{ 10s },		true,	[]() {cout << "#5\tTimer<hours>\t\t[async]\t(10s)\t\tis done!" << nendl; });
+			Timer<hours>			timer5(Time{ 10s },		true,	[]() {cout << "#5\tTimer<hours>\t\t[sync]\t(10s)\t\tis done!" << nendl; });
 			Timer<milliseconds>		timer6(Time{ 4s },		true,	[]() {cout << "#6\tTimer<milliseconds>\t[sync]\t(4s)\t\tis done!" << nendl; });
+			cout << "is timer1 elapsed? " << timer1.elapsed() << nendl;
 		}
 	}
 
@@ -91,18 +104,21 @@ namespace tests
 	{
 		void test()
 		{
-			Watch<seconds>			watch1(now()+Time{ 2s },		false,	[]() {cout << "#1\tWatch<seconds>\t\t[async]\t(2s)\t\tis done!" << nendl; });
-			Watch					watch2(now()+Time{ 1s },		false,	[]() {cout << "#2\tWatch\t\t\t[async]\t(1s)\t\tis done!" << nendl; });
-			Watch<milliseconds>		watch3(now()+Time{ 25ms, 1s },	false,	[]() {cout << "#3\tWatch<milliseconds>\t[async]\t(25ms, 1s)\tis done!" << nendl; });
-			Watch<milliseconds>		watch4(now()+Time{},			false,	[]() {cout << "#4\tWatch<milliseconds>\t[async]\t(0s)\t\tis done!" << nendl; });
-			Watch<hours>			watch5(now()+Time{ 10s },		true,	[]() {cout << "#5\tWatch<hours>\t\t[async]\t(10s)\t\tis done!" << nendl; });
-			Watch<milliseconds>		watch6(now()+Time{ 4s },		true,	[]() {cout << "#6\tWatch<milliseconds>\t[sync]\t(4s)\t\tis done!" << nendl; });
+			Watch<seconds>			watch1(now()+Time{ 2s },		false,	[]() {cout << "#1\tWatch<seconds>\t\t[async]\t(now() + 2s)\tis done!" << nendl; });
+			cout << "is watch1 elapsed? " << watch1.elapsed() << nendl;
+			Watch					watch2(now()+Time{ 1s },		false,	[]() {cout << "#2\tWatch\t\t\t[async]\t(now() + 1s)\tis done!" << nendl; });
+			Watch<milliseconds>		watch3(now()+Time{ 25ms, 1s },	false,	[]() {cout << "#3\tWatch<milliseconds>\t[async]\t(now() + 25ms, 1s) is done!" << nendl; });
+			Watch<milliseconds>		watch4(now()+Time{},			false,	[]() {cout << "#4\tWatch<milliseconds>\t[async]\t(now() + 0s)\tis done!" << nendl; });
+			Watch<hours>			watch5(now()+Time{ 10s },		true,	[]() {cout << "#5\tWatch<hours>\t\t[sync]\t(now() + 10s)\tis done!" << nendl; });
+			Watch<milliseconds>		watch6(now()+Time{ 4s },		true,	[]() {cout << "#6\tWatch<milliseconds>\t[sync]\t(now() + 4s)\tis done!" << nendl; });
+			cout << "is watch1 elapsed? " << watch1.elapsed() << nendl;
 		}
 	}
 }
 
 int main()
 {
+	cout << std::boolalpha;
 	cout << "--------------Testing Time class--------------" << nendl;
 	tests::time::test();
 	std::cout << nendl << "--------------Testing Timer class--------------" << nendl;

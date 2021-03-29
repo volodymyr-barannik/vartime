@@ -6,7 +6,9 @@ template <typename Duration>
 class Timer
 {
 private:
+
 	std::thread _thread;
+	bool _elapsed = false;
 
 public:
 
@@ -21,18 +23,20 @@ public:
 		}
 		else
 		{
-			_thread = std::thread([duration, &fn, &args...] // We're passing duration by value because duration is a local variable.
-															// Thread might start its work after we left the constructor.
-															// Thus, we might get a reference to destroyed object
+			// We're passing duration by value because duration is a local variable.
+			// Thread might start its execution after we left the constructor.
+			// Thus, we might get a reference to destroyed object :(
+			_thread = std::thread([this, duration, &fn, &args...]	
 				{
 					std::this_thread::sleep_for(duration);
 					std::invoke(fn, std::forward<decltype(args)>(args)...);
+					_elapsed = true;
 				});
 			_thread.detach();
 		}
 	}
 
-	bool elapsed() const { return _thread.joinable(); }
+	bool elapsed() const { return _elapsed; }
 };
 
 template<typename L, typename H, typename Functor, typename... Args>
