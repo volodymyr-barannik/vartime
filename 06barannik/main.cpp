@@ -1,10 +1,12 @@
-// Author:		Barannik Volodymyr
+// Author:		Volodymyr Barannik
 // 
 // Requirements: C++17
 // 
 // Comment:		This is my first try at template metaprogramming. Please. Critique.
 //				If you think that something could've been done in a more elegant way,
-//				please tell me. I'd like to hear your proposals.
+//				please tell me. I'd like to hear your suggestions.
+//				
+// P.S.			Time class is the most interesting one :)
 
 #include <iostream>
 #include "Time.h"
@@ -18,11 +20,12 @@ static constexpr char nendl = '\n';
 
 namespace tests
 {
-
 	namespace time
 	{
-		void test()
+		void run()
 		{
+			cout << "--------------Testing Time class--------------" << nendl;
+
 			using Tm = Time<microseconds, minutes>;
 
 			auto								t_now(now());
@@ -87,8 +90,10 @@ namespace tests
 
 	namespace timer
 	{
-		void test()
+		void run()
 		{
+			std::cout << nendl << "--------------Testing Timer class--------------" << nendl;
+
 			Timer<seconds>			timer1(Time{ 2s },		false,	[]() {cout << "#1\tTimer<seconds>\t\t[async]\t(2s)\t\tis done!" << nendl; });
 			cout << "is timer1 elapsed? " << timer1.elapsed() << nendl;
 			Timer					timer2(Time{ 1s },		false,	[]() {cout << "#2\tTimer\t\t\t[async]\t(1s)\t\tis done!" << nendl; });
@@ -102,8 +107,10 @@ namespace tests
 
 	namespace watch
 	{
-		void test()
+		void run()
 		{
+			std::cout << nendl << "--------------Testing Watch class--------------" << nendl;
+
 			Watch<seconds>			watch1(now()+Time{ 2s },		false,	[]() {cout << "#1\tWatch<seconds>\t\t[async]\t(now() + 2s)\tis done!" << nendl; });
 			cout << "is watch1 elapsed? " << watch1.elapsed() << nendl;
 			Watch					watch2(now()+Time{ 1s },		false,	[]() {cout << "#2\tWatch\t\t\t[async]\t(now() + 1s)\tis done!" << nendl; });
@@ -119,11 +126,8 @@ namespace tests
 int main()
 {
 	cout << std::boolalpha;
-	cout << "--------------Testing Time class--------------" << nendl;
-	tests::time::test();
-	std::cout << nendl << "--------------Testing Timer class--------------" << nendl;
-	tests::timer::test();
-	std::cout << nendl << "--------------Testing Watch class--------------" << nendl;
-	tests::watch::test();
+	tests::time::run();
+	tests::timer::run();
+	tests::watch::run();
 	std::cout << "END" << std::endl;
 }

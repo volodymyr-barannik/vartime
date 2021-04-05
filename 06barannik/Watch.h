@@ -1,6 +1,8 @@
 #pragma once
 #include "Timer.h"
 
+// Watch that has a duration of type Duration.
+// Starts immediately after its creation.
 template <typename Duration>
 class Watch
 {

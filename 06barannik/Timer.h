@@ -2,6 +2,8 @@
 #include <thread>
 #include "Time.h"
 
+// Timer that has a duration of type Duration.
+// Starts immediately after its creation.
 template <typename Duration>
 class Timer
 {

@@ -27,8 +27,11 @@ template <> struct duration_name<std::chrono::hours>		{ static constexpr auto na
 template <typename T>
 constexpr auto duration_name_v = duration_name<std::decay_t<T>>::name;
 
-// Represents a time in range of standard units [LowDurationType, HighDurationTime]
-// e.g., Time<seconds, days> stores and exposes seconds, minutes and days
+
+// Represents time in range of standard units [LowDurationType, HighDurationTime]
+// e.g., Time<seconds, hours> contains seconds, minutes and hours.
+//		 Time<nanoseconds, minutes> contains nanoseconds, microseconds, milliseconds, seconds and minutes.
+//		 Time<seconds> contains only seconds.
 template <class LowDurationType, class HighDurationType = LowDurationType>
 class Time
 {
@@ -227,7 +230,6 @@ public:
 		return	BroadenedTime(*this) + BroadenedTime(other);
 	}
 
-
 	constexpr Time operator-(const Time& other) const
 	{
 		Time result = *this;
@@ -254,7 +256,7 @@ public:
 
 using DefaultTime = Time<std::chrono::seconds, std::chrono::hours>;
 
-// Returns current time
+// Returns current local time
 static DefaultTime now()
 {
 	using namespace std::chrono;
@@ -267,6 +269,8 @@ static DefaultTime now()
 	return { static_cast<seconds>(time.tm_sec), static_cast<minutes>(time.tm_min), static_cast<hours>(time.tm_hour) };
 }
 
+
+// DEDUCTION GUIDES
 
 template<typename... Durations> // 0 or more durations
 Time(const Durations&... durations) -> Time<std::chrono::seconds>;

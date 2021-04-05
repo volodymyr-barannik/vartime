@@ -85,14 +85,15 @@ template <class Callable, typename... Elements>
 constexpr Callable for_each_arg(Callable&& f, Elements&& ...args)
 {
 	// cast to void in order to suppress warnings
-	// this whole construction is needed for calling f with args in proper order -- and nothing more
+	// this whole construction is needed for calling f with args in proper order -- nothing more than that
 	(void)std::initializer_list<int>
 	{
 		(
 			(void)std::invoke(std::forward<Callable>(f), std::forward<Elements>(args)), // call
 			0 // just a lonely placeholder in order for this thing to work
 			  // (initializer lists has to be constructed out of something,
-			  //  so it shall be constructed out of zeros)
+			  //  so it shall be constructed out of zeros
+			  //  because 0 is a result of expression of type (X, 0))
 		)...
 	};
 	return f;
@@ -132,7 +133,7 @@ constexpr Callable for_each_arg_idx(Tuple&& t, Callable&& f, std::index_sequence
 	return f;
 }
 
-// Consequently iterates over all elements of Tuple t, applying function f to each of them and
+// Sequentially iterates over all elements of Tuple t, applying function f to each of them and
 // "saving" index of that element in idx
 // Callable should be of type [..](element, idx) -> void
 // it's used like enumerate() in Python (kind of)
@@ -146,22 +147,27 @@ constexpr Callable for_each_idx(Tuple&& t, Callable&& f) {
 							std::forward<decltype(seq)>(seq));
 }
 
-// requires types of elements of both tuples to be unique
+// For each element type in "by" copy element with that exact type from "from" to "to"
+// NB! Requires types of elements of both tuples to be unique.
 template <class TupleBy, class TupleTo, class TupleFrom>
 constexpr void copy_tuple_by_types(TupleTo& to, const TupleFrom& from, const TupleBy& by = TupleBy{})
 {
-	for_each(by, [&from, &to](auto&& elem)
-		{
+	for_each(by, [&from, &to](auto&& elem) {
 			using decayed_elem = typename std::decay_t<decltype(elem)>;
 			std::get<decayed_elem>(to) = std::get<decayed_elem>(from);
 		});
 }
 
-// Unfortunately it is impossible to make it work when evaluated at runtime.
+// Unfortunately, as far as I know, it is [nearly] impossible to make following code work when evaluated at runtime.
 // tuple_element_t can be evaluated at compile-time only.
 // There's no runtime reflection in C++, so we can't acquire type of i'th element of tuple at runtime.
-// Thus, we have to create a "proxy" tuple and then iterate over its elements.
-// Please, please, please. Tell me I'm wrong. Tell me there's another way of doing it. Is there any such?
+
+// Thus, we have to create a "proxy" tuple and then iterate over its elements (that's what we did in the function above)
+
+// Another way would be to generate a lookup table for each tuple we create
+// such that it maps each element index to its memory address.
+// But that might complicate stuff way too much if we want to make things neat and efficient and
+// not to bloat size of executables.
 
 
 // requires Callable of form [....](auto&& idx) {....};
